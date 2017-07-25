@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>前端波纹特效和单例模式</title>
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <style>
+    * {
+        margin: 0;
+        padding: 0;
+    }
+
+    [xy] {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -webkit-transform: translate(-50%, -50%);
+        transform: translate(-50%, -50%);
+    }
+
+    html,
+    body {
+        width: 100%;
+        height: 100%;
+        background-color: #353535;
+        cursor: pointer;
+    }
+
+    button {
+        width: 200px;
+        left: 60px;
+        text-align: center;
+        line-height: 60px;
+        border: none;
+        outline: none;
+        border-radius: 10px;
+        font-size: 20px;
+        color: #fff;
+        cursor: pointer;
+        margin: 120px 0;
+        display: block;
+    }
+
+    .btn1 {
+        background-color: #19c365;
+    }
+
+    .btn2 {
+        background-color: #bf6114;
+    }
+
+    .btn3 {
+        background-color: #e45050;
+    }
+
+    .btn4 {
+        background-color: #8080d0;
+    }
+
+    .btn5 {
+        background-color: #c3191b;
+    }
+    </style>
+</head>
+
+<body>
+    <div xy>
+        <button class="btn1">点击我</button>
+        <button class="btn2">点击我</button>
+        <button class="btn3">点击我</button>
+        <button class="btn4">点击我</button>
+        <button class="btn5">点击我</button>
+    </div>
+    <script type="text/javascript">
+    function RippleEffect(options) {
+        this.parent = options.parent || 'div';
+        this.backgroundColor = options.backgroundColor || '#fff';
+        this.opacity = options.opacity || 1;
+        this.ripple = null;
+
+        var ua = navigator.userAgent;
+        this.isMobile = /mobile/ig.test(ua);
+        function detectAnimationEndEvents(){
+            var t;
+            var el = document.createElement('div');
+            var animEndEventNames = {
+              'WebkitAnimation' : 'webkitTransitionEnd',
+              'animation' : 'transitionend'
+            };
+
+            for(t in animEndEventNames){
+                if( el.style[t] !== undefined ){
+                    return animEndEventNames[t];
+                }
+            }
+        }
+        this.event = {
+            start: this.isMobile ? 'touchstart' : 'mousedown',
+            end: this.isMobile ? 'touchend' : 'mouseup',
+            transitionEnd: detectAnimationEndEvents()
+        }
+        console.log( this.event.transitionEnd);
+        this.init();
+    }
+    RippleEffect.prototype = {
+        constructor: RippleEffect,
+        init: function() {
+            this.addEvent();
+        },
+        singleton: function(fn) {
+            var result = null;
+            return (function() {
+                return result || (result = fn.apply(this, arguments));
+            })();
+        },
+        createRipple: function(parent) {
+            return this.singleton(function() {
+                return parent.appendChild(document.createElement('span'))
+            });
+        },
+        removeRipple: function(child) {
+            child.parentNode.removeChild(child)
+        },
+        setParent: function(parent) {
+            if (!parent) return;
+            var parentPosition = this.getStyle(parent, 'position');
+            var parentFlow = this.getStyle(parent, 'overflow');
+            if (parentPosition === 'absolute' || parentPosition === 'relative') return;
+            parent.style.position = 'relative';
+            parent.style.top = parent.style.left = 0;
+
+            if (parentFlow !== 'hidden') {
+                parent.style.overflow = 'hidden';
+            }
+        },
+        getStyle: function(obj, attr) {
+            return obj.currentStyle ? obj.currentStyle[attr] : getComputedStyle(obj, null)[attr];
+        },
+        getPagePos: function(e) {
+            if (!e) {
+                return false;
+            }
+            return {
+                pageX: this.isMobile?e.changedTouches[0].pageX:e.pageX,
+                pageY: this.isMobile?e.changedTouches[0].pageY:e.pageY
+            }
+        },
+        getParentInfo: function(parent) {
+            var rect = parent.getBoundingClientRect();
+            var bigSize = Math.max(rect.width, rect.height);
+            return {
+                top: rect.top,
+                left: rect.left,
+                bigSize: bigSize
+            }
+        },
+        setRippleStyle: function(obj, pagePos, parentInfo) {
+            obj.style.display = 'block';
+            obj.style.position = 'absolute';
+            obj.style.top = pagePos.pageY - parentInfo.top - parentInfo.bigSize - document.body.scrollTop + 'px';
+            obj.style.left = pagePos.pageX - parentInfo.left - parentInfo.bigSize - document.body.scrollLeft + 'px';
+            obj.style.width = obj.style.height = parentInfo.bigSize * 2 + 'px';
+            obj.style.borderRadius = '50%';
+            obj.style.webkitTransform = obj.style.transform = 'scale(0)';
+            obj.style.backgroundColor = this.backgroundColor;
+            obj.style.opacity = this.opacity;
+            obj.style.pointerEvents = 'none';
+        },
+        setRippleAfter: function(obj) {
+            obj.style.opacity = 0;
+            obj.style.webkitTransition = obj.style.transition = 'transform 1s,opacity 1s';
+            obj.style.webkitTransform = obj.style.transform = 'scale(1)';
+        },
+        addEvent: function() {
+            var body = document.body;
+            var parent = null;
+            var _this = this;
+            var onEnd = null;
+            body.addEventListener(this.event.start, onStart, false);
+            
+            function onStart(e) {
+                var targetName = e.target.nodeName.toUpperCase()
+                if (targetName === _this.parent.toUpperCase()) {
+                    parent = e.target;
+                    _this.setParent(parent);
+                    var child = _this.createRipple(parent);
+                    var pagePos = _this.getPagePos(e);
+                    var parentInfo = _this.getParentInfo(parent);
+                    _this.setRippleStyle(child, pagePos, parentInfo);
+                    onEnd = onEndFn.bind(null,child);
+                    body.addEventListener(_this.event.end, onEnd, false);
+                    child.addEventListener(_this.event.transitionEnd, onTransitionEnd, false);
+                }
+            }
+            
+            function onEndFn(child) {
+                body.removeEventListener(_this.event.end, onEnd, false);
+                _this.setRippleAfter(child);
+            }
+
+            function onTransitionEnd(e) {
+                console.log(e);
+                this.removeEventListener(_this.event.transitionEnd, onTransitionEnd, false);
+                _this.removeRipple(this);
+            }
+        }
+    }
+
+    new RippleEffect({
+        parent: 'button'
+    });
+    /*new RippleEffect({
+        parent: 'body'
+    });*/
+    </script>
+</body>
+
+</html>
